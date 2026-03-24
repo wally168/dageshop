@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { isSameOrigin, requireAdminSession } from '@/lib/auth'
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: '非法来源' }, { status: 403 })
+    }
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     const { id } = await params
 
     // 检查消息是否存在
@@ -40,6 +47,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     const { id } = await params
 
     const message = await db.message.findUnique({
@@ -68,6 +78,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: '非法来源' }, { status: 403 })
+    }
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     const { id } = await params
     const body = await request.json()
     const { read } = body

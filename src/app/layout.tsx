@@ -5,6 +5,7 @@ import { SettingsProvider, SiteSettings } from "@/lib/settings";
 import AppShell from "@/components/AppShell";
 import { headers } from "next/headers";
 import Script from "next/script";
+import { cache } from "react";
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -67,7 +68,7 @@ const defaultSettings = {
 }
 
 // 动态获取站点设置（服务端直接查询数据库）
-async function getSettings(): Promise<SiteSettings> {
+const getSettings = cache(async (): Promise<SiteSettings> => {
   try {
     const settings = await db.siteSettings.findMany()
     
@@ -85,10 +86,10 @@ async function getSettings(): Promise<SiteSettings> {
     console.error('Failed to fetch settings from DB:', error);
   }
   return defaultSettings as SiteSettings;
-}
+})
 
 // 服务器端预取导航（首屏初始数据）
-async function getNavigation() {
+const getNavigation = cache(async () => {
   try {
     const baseUrl = await getBaseUrl();
     const response = await fetch(`${baseUrl}/api/navigation`, { next: { revalidate: 3600 } });
@@ -100,7 +101,7 @@ async function getNavigation() {
     console.error('Failed to fetch navigation:', error);
   }
   return [];
-}
+})
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSettings();

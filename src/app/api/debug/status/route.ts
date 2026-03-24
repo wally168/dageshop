@@ -1,8 +1,12 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdminSession } from '@/lib/auth'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     // 数据库健康检查与各表计数
     const [
       adminCount,

@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { db } from '@/lib/db'
+import { isSameOrigin, requireAdminSession } from '@/lib/auth'
 
 export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
@@ -15,6 +16,12 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
 
 export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: '非法来源' }, { status: 403 })
+    }
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     const { id } = await context.params
     const payload = await request.json()
     const name: string | undefined = payload?.name?.trim()
@@ -56,6 +63,13 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
 
 export async function DELETE(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
+    const req = _req
+    if (!isSameOrigin(req)) {
+      return NextResponse.json({ error: '非法来源' }, { status: 403 })
+    }
+    const { response } = await requireAdminSession(req)
+    if (response) return response
+
     const { id } = await context.params
 
     // 检查是否有产品依赖该分类

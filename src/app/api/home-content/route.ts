@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { isSameOrigin, requireAdminSession } from '@/lib/auth'
 
 // GET - 获取首页内容
 export async function GET() {
@@ -24,7 +25,9 @@ export async function GET() {
       })
     }
     
-    return NextResponse.json(homeContent)
+    const res = NextResponse.json(homeContent)
+    res.headers.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600')
+    return res
   } catch (error: any) {
     console.error('Failed to fetch home content:', error)
     return NextResponse.json(
@@ -37,6 +40,12 @@ export async function GET() {
 // PUT - 更新首页内容
 export async function PUT(request: NextRequest) {
   try {
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: '非法来源' }, { status: 403 })
+    }
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     const data = await request.json()
     
     // 验证必填字段

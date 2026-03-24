@@ -52,6 +52,7 @@ export default function Navigation({ initialNavItems = [] }: { initialNavItems?:
 
   // 新增：加载导航数据（如果没有初始数据才显示loading）
   useEffect(() => {
+    if (initialNavItems.length > 0) return
     const load = async () => {
       const shouldShowLoading = initialNavItems.length === 0
       try {
@@ -76,7 +77,7 @@ export default function Navigation({ initialNavItems = [] }: { initialNavItems?:
       }
     }
     load()
-  }, [])
+  }, [initialNavItems.length])
 
   // 加载分类用于 Products 下拉
   useEffect(() => {

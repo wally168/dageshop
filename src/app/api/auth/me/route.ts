@@ -1,31 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { SESSION_COOKIE, getSessionByToken } from '@/lib/auth'
+import { clearSessionCookie, SESSION_COOKIE, getSessionByToken } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
     const token = request.cookies.get(SESSION_COOKIE)?.value
     if (!token) {
       const res = NextResponse.json({ error: '未登录' }, { status: 401 })
-      res.cookies.set(SESSION_COOKIE, '', {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
-        path: '/',
-        expires: new Date(0)
-      })
+      clearSessionCookie(res)
       return res
     }
 
     const session = await getSessionByToken(token)
     if (!session) {
       const res = NextResponse.json({ error: '会话无效或已过期' }, { status: 401 })
-      res.cookies.set(SESSION_COOKIE, '', {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
-        path: '/',
-        expires: new Date(0)
-      })
+      clearSessionCookie(res)
       return res
     }
 

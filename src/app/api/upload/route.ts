@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { isSameOrigin, requireAdminSession } from '@/lib/auth'
 
 export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: '非法来源' }, { status: 403 })
+    }
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     const formData = await request.formData()
     const file = formData.get('file') as File | null
     if (!file) {

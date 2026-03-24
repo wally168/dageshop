@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdminSession } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
   try {
@@ -88,6 +89,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     const url = new URL(request.url)
     const format = (url.searchParams.get('format') || 'json').toLowerCase()
     const messages = await db.message.findMany({

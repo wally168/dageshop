@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { isSameOrigin, requireAdminSession } from '@/lib/auth'
 
 // GET - 获取所有分类（用于后台产品表单选择）
 export async function GET() {
@@ -14,9 +15,11 @@ export async function GET() {
       slug: c.slug,
     }))
 
-    return NextResponse.json(result, {
+    const res = NextResponse.json(result, {
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
     })
+    res.headers.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600')
+    return res
   } catch (error) {
     console.error('获取分类失败:', error)
     return NextResponse.json({ error: '获取分类失败' }, { status: 500 })
@@ -24,8 +27,14 @@ export async function GET() {
 }
 
 // POST - 创建分类
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: '非法来源' }, { status: 403 })
+    }
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     const payload = await request.json()
     const name: string = (payload?.name || '').trim()
     const slugInput: string = (payload?.slug || '').trim()

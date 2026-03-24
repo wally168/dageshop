@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { isSameOrigin, requireAdminSession } from '@/lib/auth'
 import { Prisma } from '@prisma/client'
 
 interface NavItemInput {
@@ -16,6 +17,10 @@ export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url)
     const includeInactive = url.searchParams.get('includeInactive') === 'true'
+    if (includeInactive) {
+      const { response } = await requireAdminSession(request)
+      if (response) return response
+    }
 
     const items = await db.navigation.findMany({
       where: includeInactive ? undefined : { active: true },
@@ -33,9 +38,13 @@ export async function GET(request: NextRequest) {
       active: item.active,
     }))
 
-    return NextResponse.json(result, {
+    const res = NextResponse.json(result, {
       headers: { 'Content-Type': 'application/json; charset=utf-8' }
     })
+    if (!includeInactive) {
+      res.headers.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600')
+    }
+    return res
   } catch (error) {
     console.error('获取导航失败:', error)
     return NextResponse.json({ error: '获取导航失败' }, { status: 500 })
@@ -45,6 +54,12 @@ export async function GET(request: NextRequest) {
 // PUT - 覆盖更新全部导航项
 export async function PUT(request: NextRequest) {
   try {
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: '非法来源' }, { status: 403 })
+    }
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     const body = await request.json()
     const items: NavItemInput[] = body?.items
 

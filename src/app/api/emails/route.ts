@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdminSession } from '@/lib/auth'
 
 // GET /api/emails
 // 返回从 Message 表聚合出的邮箱列表，支持格式：json/csv/txt/txt_with_name
@@ -9,6 +10,9 @@ import { db } from '@/lib/db'
 // TXT_WITH_NAME: 一行“用户名,邮箱”
 export async function GET(request: NextRequest) {
   try {
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     const url = new URL(request.url)
     const format = (url.searchParams.get('format') || 'json').toLowerCase()
 

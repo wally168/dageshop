@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { isSameOrigin, requireAdminSession } from '@/lib/auth'
 type ReviewRecord = {
   id: string
   productId: string
@@ -19,6 +20,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const { id } = await context.params
     const url = new URL(request.url)
     const visibleOnly = url.searchParams.get('visibleOnly') !== '0'
+    if (!visibleOnly) {
+      const { response } = await requireAdminSession(request)
+      if (response) return response
+    }
 
     const reviews = await db.productReview.findMany({
       where: { productId: id, ...(visibleOnly ? { isVisible: true } : {}) },
@@ -39,7 +44,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       updatedAt: r.updatedAt,
     }))
 
-    return NextResponse.json(result)
+    const res = NextResponse.json(result)
+    if (visibleOnly) {
+      res.headers.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600')
+    }
+    return res
   } catch (error) {
     console.error('获取评论失败:', error)
     return NextResponse.json({ error: '获取评论失败' }, { status: 500 })
@@ -48,6 +57,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: '非法来源' }, { status: 403 })
+    }
+    const { response } = await requireAdminSession(request)
+    if (response) return response
+
     const { id } = await context.params
     const body = await request.json()
   const {

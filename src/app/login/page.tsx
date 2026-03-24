@@ -10,6 +10,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showGuide, setShowGuide] = useState(false)
+  const [requireCaptcha, setRequireCaptcha] = useState(false)
+  const [captchaQuestion, setCaptchaQuestion] = useState('')
+  const [captchaToken, setCaptchaToken] = useState('')
+  const [captchaAnswer, setCaptchaAnswer] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -19,10 +23,21 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({
+          username,
+          password,
+          captchaToken: requireCaptcha ? captchaToken : undefined,
+          captchaAnswer: requireCaptcha ? captchaAnswer : undefined
+        })
       })
       const data = await res.json()
       if (!res.ok) {
+        if (data?.requireCaptcha) {
+          setRequireCaptcha(true)
+          setCaptchaQuestion(String(data?.captchaQuestion || ''))
+          setCaptchaToken(String(data?.captchaToken || ''))
+          setCaptchaAnswer('')
+        }
         throw new Error(data?.error || '登录失败')
       }
       window.location.href = '/admin'
@@ -69,6 +84,20 @@ export default function LoginPage() {
               autoComplete="current-password"
             />
           </div>
+          {requireCaptcha && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">验证码</label>
+              <div className="mb-2 text-sm text-gray-600">{captchaQuestion}</div>
+              <input
+                type="text"
+                value={captchaAnswer}
+                onChange={(e) => setCaptchaAnswer(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="请输入验证码答案"
+                autoComplete="off"
+              />
+            </div>
+          )}
 
           <button
             type="submit"
