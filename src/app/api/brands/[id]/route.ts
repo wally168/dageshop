@@ -1,9 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isSameOrigin, requireAdminSession } from '@/lib/auth'
 
 export async function GET(
-  request: NextRequest,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -19,16 +18,10 @@ export async function GET(
 }
 
 export async function PUT(
-  request: NextRequest,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!isSameOrigin(request)) {
-      return NextResponse.json({ error: '非法来源' }, { status: 403 })
-    }
-    const { response } = await requireAdminSession(request)
-    if (response) return response
-
     const { id } = await params
     const payload = await request.json()
     const name: string = (payload?.name || '').trim()
@@ -58,16 +51,10 @@ export async function PUT(
 }
 
 export async function DELETE(
-  request: NextRequest,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!isSameOrigin(request)) {
-      return NextResponse.json({ error: '非法来源' }, { status: 403 })
-    }
-    const { response } = await requireAdminSession(request)
-    if (response) return response
-
     const { id } = await params
     // 不像分类，品牌目前没有强关联，可以直接删除
     // 如果后续有关联，需要先检查

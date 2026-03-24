@@ -323,7 +323,7 @@ export default function ProductsManagement() {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch('/api/products?includeInactive=true')
+      const response = await fetch('/api/products')
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
       }

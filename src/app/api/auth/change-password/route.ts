@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { hashPassword, isSameOrigin, requireAdminSession, verifyPassword } from '@/lib/auth'
+import { SESSION_COOKIE, getSessionByToken, hashPassword, verifyPassword } from '@/lib/auth'
 import { db } from '@/lib/db'
 
 export async function POST(request: NextRequest) {
   try {
-    if (!isSameOrigin(request)) {
-      return NextResponse.json({ error: '非法来源' }, { status: 403 })
+    const token = request.cookies.get(SESSION_COOKIE)?.value
+    if (!token) {
+      return NextResponse.json({ error: '未登录' }, { status: 401 })
     }
-    const { response, session } = await requireAdminSession(request)
-    if (response) return response
+
+    const session = await getSessionByToken(token)
+    if (!session) {
+      return NextResponse.json({ error: '会话无效或已过期' }, { status: 401 })
+    }
 
     const { currentPassword, newPassword } = await request.json()
     if (!currentPassword || !newPassword) {

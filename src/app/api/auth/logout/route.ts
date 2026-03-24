@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { destroySession, isSameOrigin, SESSION_COOKIE } from '@/lib/auth'
+import { destroySession, SESSION_COOKIE } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
   try {
-    if (!isSameOrigin(request)) {
-      return NextResponse.json({ error: '非法来源' }, { status: 403 })
-    }
-
     const token = request.cookies.get(SESSION_COOKIE)?.value
     if (token) {
       await destroySession(token)

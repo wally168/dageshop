@@ -57,7 +57,7 @@ export default function AdminDashboard() {
   const fetchData = async () => {
     try {
       const [productsRes, messagesRes] = await Promise.all([
-        fetch('/api/products?includeInactive=true'),
+        fetch('/api/products'),
         fetch('/api/messages')
       ])
       

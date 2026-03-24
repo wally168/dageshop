@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { SESSION_COOKIE, ensureDefaultAdmin, getDefaultAdminCredentials, hashPassword, isSameOrigin, requireAdminSession } from '@/lib/auth'
+import { SESSION_COOKIE, getSessionByToken, ensureDefaultAdmin, hashPassword } from '@/lib/auth'
 
 // 站点默认设置（与 /api/settings 保持一致）
 const defaultSettings: Record<string, string> = {
@@ -128,45 +128,59 @@ const defaultProducts = [
 
 export async function POST(request: NextRequest) {
   try {
-    if (!isSameOrigin(request)) {
-      return NextResponse.json({ error: '非法来源' }, { status: 403 })
-    }
-    const { response, session } = await requireAdminSession(request)
-    if (response) return response
+    // 管理员权限校验
+    console.log('Reset API: All cookies:', Object.fromEntries(request.cookies.getAll().map(c => [c.name, c.value])))
+    console.log('Reset API: SESSION_COOKIE name:', SESSION_COOKIE)
     const token = request.cookies.get(SESSION_COOKIE)?.value
+    console.log('Reset API: Token received:', token ? 'Yes' : 'No')
+    console.log('Reset API: Token value:', token)
+    
+    if (!token) {
+      console.log('Reset API: No token found')
+      return NextResponse.json({ error: '未登录' }, { status: 401 })
+    }
+    
+    const session = await getSessionByToken(token)
+    console.log('Reset API: Session found:', session ? 'Yes' : 'No')
+    
+    if (!session) {
+      console.log('Reset API: Session invalid or expired')
+      return NextResponse.json({ error: '会话无效或已过期' }, { status: 401 })
+    }
 
     // 读取重置模式：data（保留管理员与当前会话）/ full（重置管理员并清除所有会话）/ password（仅重置当前管理员密码）
     const rawMode = request.nextUrl?.searchParams?.get('mode')
     const mode = rawMode === 'full' ? 'full' : rawMode === 'password' ? 'password' : 'data'
+    console.log('Reset API: Mode =', mode)
+
+    console.log('Reset API: Starting reset process for user:', session.userId)
 
     // 新增：仅重置密码模式，保留所有数据与当前会话
     if (mode === 'password') {
-      let defaultPassword = ''
-      try {
-        defaultPassword = getDefaultAdminCredentials().password
-      } catch {
-        return NextResponse.json({ error: '生产环境必须配置默认管理员账号密码' }, { status: 400 })
-      }
-      const { hash, salt } = hashPassword(defaultPassword)
+      const { hash, salt } = hashPassword('dage168')
       await db.adminUser.update({
         where: { id: session.userId },
         data: { passwordHash: hash, passwordSalt: salt }
       })
+      console.log('Reset API: PASSWORD mode completed, current session preserved')
       return NextResponse.json({ success: true, message: '已重置当前管理员密码为默认值（保留登录）' })
     }
 
     // 执行重置：清空并预设数据（顺序执行，避免交互式事务）
     if (mode === 'full') {
       // 清空所有会话与管理员（强制退出并重置管理员）
+      console.log('Reset API: FULL mode - clearing ALL sessions and admin users')
       await db.session.deleteMany({})
       await db.adminUser.deleteMany({})
     } else {
       // 仅重置数据：保留管理员与当前登录会话
+      console.log('Reset API: DATA mode - clearing sessions except current')
       await db.session.deleteMany({
         where: { token: { not: token } }
       })
     }
 
+    console.log('Reset API: Clearing other data')
     await db.message.deleteMany({})
     await db.navigation.deleteMany({})
     await db.siteSettings.deleteMany({})
@@ -263,6 +277,7 @@ export async function POST(request: NextRequest) {
     if (mode === 'full') {
       // 重置管理员为默认账号（dage666/dage168）
       await ensureDefaultAdmin()
+      console.log('Reset API: FULL mode completed, forcing logout')
       // 清除 Cookie 并返回 401 以触发前端跳转登录
       const res = NextResponse.json({ error: '未登录', message: '站点已重置，已退出登录' }, { status: 401 })
       res.cookies.set(SESSION_COOKIE, '', {
@@ -275,6 +290,7 @@ export async function POST(request: NextRequest) {
       return res
     }
 
+    console.log('Reset API: DATA mode completed successfully')
     return NextResponse.json({ success: true, message: '站点数据已重置并预设（管理员与当前登录保留）' })
   } catch (error) {
     console.error('重置失败:', error)

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isSameOrigin, requireAdminSession } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,12 +7,6 @@ export async function GET(request: NextRequest) {
     const categoryId = searchParams.get('categoryId')
     const featured = searchParams.get('featured')
     const limit = searchParams.get('limit')
-    const includeInactive = searchParams.get('includeInactive') === 'true'
-
-    if (includeInactive) {
-      const { response } = await requireAdminSession(request)
-      if (response) return response
-    }
     
     const where: any = {}
     
@@ -23,9 +16,6 @@ export async function GET(request: NextRequest) {
     
     if (featured === 'true') {
       where.featured = true
-    }
-    if (!includeInactive) {
-      where.active = true
     }
 
     const queryOptions: any = {
@@ -87,11 +77,7 @@ export async function GET(request: NextRequest) {
       reviewCount: (aggMap[p.id]?.reviewCount ?? 0),
     }))
 
-    const res = NextResponse.json(normalized)
-    if (!includeInactive) {
-      res.headers.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600')
-    }
-    return res
+    return NextResponse.json(normalized)
   } catch (error) {
     console.error('Error fetching products:', error)
     return NextResponse.json(
@@ -103,12 +89,6 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!isSameOrigin(request)) {
-      return NextResponse.json({ error: '非法来源' }, { status: 403 })
-    }
-    const { response } = await requireAdminSession(request)
-    if (response) return response
-
     const body = await request.json()
     const {
       name,

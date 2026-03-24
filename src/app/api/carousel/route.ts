@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isSameOrigin, requireAdminSession } from '@/lib/auth'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const url = new URL(request.url)
-    const includeInactive = url.searchParams.get('includeInactive') === 'true'
-    if (includeInactive) {
-      const { response } = await requireAdminSession(request)
-      if (response) return response
-    }
     const items = await db.carouselItem.findMany({
-      where: includeInactive ? undefined : { active: true },
       orderBy: { order: 'asc' },
     })
-    const res = NextResponse.json(items)
-    if (!includeInactive) {
-      res.headers.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600')
-    }
-    return res
+    return NextResponse.json(items)
   } catch (error) {
     console.error('Failed to fetch carousel items:', error)
     return NextResponse.json({ error: 'Failed to fetch carousel items' }, { status: 500 })
@@ -27,12 +15,6 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!isSameOrigin(request)) {
-      return NextResponse.json({ error: '非法来源' }, { status: 403 })
-    }
-    const { response } = await requireAdminSession(request)
-    if (response) return response
-
     const data = await request.json()
     // Basic validation
     if (!data.imageUrl) {
@@ -66,12 +48,6 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    if (!isSameOrigin(request)) {
-      return NextResponse.json({ error: '非法来源' }, { status: 403 })
-    }
-    const { response } = await requireAdminSession(request)
-    if (response) return response
-
     const { ids } = await request.json()
     if (!Array.isArray(ids)) {
       return NextResponse.json({ error: 'Invalid input' }, { status: 400 })

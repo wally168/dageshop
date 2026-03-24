@@ -66,7 +66,7 @@ export default function CarouselAdmin() {
   const fetchData = async () => {
     try {
       const [carouselRes, contentRes] = await Promise.all([
-        fetch('/api/carousel?includeInactive=true'),
+        fetch('/api/carousel'),
         fetch('/api/home-content')
       ])
 

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isSameOrigin, requireAdminSession } from '@/lib/auth'
 
 function slugify(name: string) {
   return name
@@ -21,13 +20,6 @@ async function ensureUniqueSlug(base: string) {
 
 export async function POST(_request: NextRequest) {
   try {
-    const request = _request
-    if (!isSameOrigin(request)) {
-      return NextResponse.json({ error: '非法来源' }, { status: 403 })
-    }
-    const { response } = await requireAdminSession(request)
-    if (response) return response
-
     if (process.env.NODE_ENV === 'production') {
       return NextResponse.json({ error: 'Not allowed in production' }, { status: 403 })
     }

@@ -2,14 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { slugify } from '@/lib/utils'
 import * as XLSX from 'xlsx'
-import { isSameOrigin, requireAdminSession } from '@/lib/auth'
+import { getSessionByToken, SESSION_COOKIE } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
-  if (!isSameOrigin(request)) {
-    return NextResponse.json({ error: '非法来源' }, { status: 403 })
+  // Check authentication
+  const token = request.cookies.get(SESSION_COOKIE)?.value
+  if (!token) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const { response } = await requireAdminSession(request)
-  if (response) return response
+  const session = await getSessionByToken(token)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const formData = await request.formData()
