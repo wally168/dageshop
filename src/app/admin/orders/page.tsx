@@ -28,6 +28,9 @@ type OrderRecord = {
   id: string
   paypalOrderId?: string | null
   status: string
+  shippingStatus: string
+  refundStatus: string
+  trackingNumber?: string | null
   currency: string
   totalAmount: number
   paidAt?: string | null
@@ -137,9 +140,25 @@ export default function AdminOrdersPage() {
                     <div className="font-semibold text-blue-700">{order.status}</div>
                   </div>
                   <div>
+                    <div className="text-sm text-gray-500">发货</div>
+                    <div className="font-semibold text-gray-900">{order.shippingStatus || 'PENDING'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-500">退款</div>
+                    <div className="font-semibold text-gray-900">{order.refundStatus || 'NONE'}</div>
+                  </div>
+                  <div>
                     <div className="text-sm text-gray-500">金额</div>
                     <div className="font-semibold text-gray-900">{formatPrice(order.totalAmount)}</div>
                   </div>
+                </div>
+                <div className="mt-3">
+                  <Link
+                    href={`/admin/orders/${order.id}`}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    查看详情并更新发货/退款状态
+                  </Link>
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">

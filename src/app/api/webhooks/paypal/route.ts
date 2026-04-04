@@ -98,6 +98,8 @@ async function finalizePaidOrder(paypalOrderId: string, resource: any, rawPayloa
       data: {
         paypalOrderId: relatedOrderId || paypalOrderId,
         status: 'PAID',
+        shippingStatus: 'PENDING',
+        refundStatus: 'NONE',
         currency,
         totalAmount: Number.isFinite(amount) ? amount : 0,
         paidAt: new Date(),
@@ -117,6 +119,7 @@ async function finalizePaidOrder(paypalOrderId: string, resource: any, rawPayloa
       where: { id: order.id },
       data: {
         status: 'PAID',
+        refundStatus: 'NONE',
         paypalOrderId: relatedOrderId || order.paypalOrderId || paypalOrderId,
         currency,
         paidAt: new Date(),
@@ -148,6 +151,41 @@ async function finalizePaidOrder(paypalOrderId: string, resource: any, rawPayloa
       },
     })
   }
+}
+
+async function finalizeRefundOrder(paypalOrderId: string, resource: any, rawPayload: any) {
+  const captureId = String(resource?.id || '').trim()
+  const amount = Number(resource?.amount?.value ?? 0)
+  const currency = String(resource?.amount?.currency_code || 'USD')
+  const relatedOrderId = String(resource?.supplementary_data?.related_ids?.order_id || paypalOrderId).trim()
+
+  let order = await db.order.findUnique({ where: { paypalOrderId: relatedOrderId } })
+  if (!order) {
+    order = await db.order.findUnique({ where: { id: relatedOrderId } })
+  }
+  if (!order) return
+
+  order = await db.order.update({
+    where: { id: order.id },
+    data: {
+      refundStatus: 'REFUNDED',
+      status: 'REFUNDED',
+      refundedAt: new Date(),
+    },
+  })
+
+  await db.paymentTransaction.create({
+    data: {
+      orderId: order.id,
+      provider: 'paypal',
+      providerOrderId: relatedOrderId || paypalOrderId,
+      providerCaptureId: captureId || null,
+      eventType: 'PAYMENT.CAPTURE.REFUNDED',
+      amount: Number.isFinite(amount) ? amount : null,
+      currency,
+      rawPayload: JSON.stringify(rawPayload),
+    },
+  })
 }
 
 export async function POST(request: NextRequest) {
@@ -195,6 +233,9 @@ export async function POST(request: NextRequest) {
 
     if (eventType === 'PAYMENT.CAPTURE.COMPLETED') {
       await finalizePaidOrder(providerOrderId, resource, event)
+    }
+    if (eventType === 'PAYMENT.CAPTURE.REFUNDED') {
+      await finalizeRefundOrder(providerOrderId, resource, event)
     }
 
     return NextResponse.json({ ok: true })

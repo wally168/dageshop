@@ -204,9 +204,14 @@ model Order {
   id            String   @id @default(cuid())
   paypalOrderId String?  @unique
   status        String   @default("CREATED")
+  shippingStatus String  @default("PENDING")
+  refundStatus   String  @default("NONE")
+  trackingNumber String?
   currency      String   @default("USD")
   totalAmount   Float
   paidAt        DateTime?
+  shippedAt      DateTime?
+  refundedAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   items         OrderItem[]
