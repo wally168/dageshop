@@ -199,3 +199,50 @@ model Image {
   data        Bytes
   createdAt   DateTime @default(now())
 }
+
+model Order {
+  id            String   @id @default(cuid())
+  paypalOrderId String?  @unique
+  status        String   @default("CREATED")
+  currency      String   @default("USD")
+  totalAmount   Float
+  paidAt        DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  items         OrderItem[]
+  payments      PaymentTransaction[]
+
+  @@index([createdAt])
+  @@index([status])
+}
+
+model OrderItem {
+  id           String  @id @default(cuid())
+  orderId      String
+  productId    String
+  productTitle String
+  unitPrice    Float
+  quantity     Int
+  lineTotal    Float
+  order        Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model PaymentTransaction {
+  id                String   @id @default(cuid())
+  orderId           String
+  provider          String
+  eventType         String
+  providerOrderId   String?
+  providerCaptureId String?  @unique
+  amount            Float?
+  currency          String?
+  rawPayload        String
+  createdAt         DateTime @default(now())
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([provider])
+  @@index([eventType])
+}

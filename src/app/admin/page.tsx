@@ -198,6 +198,13 @@ export default function AdminDashboard() {
             color="bg-purple-500"
           />
           <QuickActionCard
+            icon={<Database className="h-6 w-6" />}
+            title="订单管理"
+            description="查看 PayPal 订单与支付流水"
+            href="/admin/orders"
+            color="bg-emerald-500"
+          />
+          <QuickActionCard
             icon={<Settings className="h-6 w-6" />}
             title="网站设置"
             description="配置网站基本信息"

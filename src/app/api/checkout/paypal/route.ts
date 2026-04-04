@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { headers } from 'next/headers'
+import { db } from '@/lib/db'
 
 type CheckoutItem = {
   id: string
@@ -31,6 +32,27 @@ function parseCheckoutItems(raw: unknown): CheckoutItem[] {
       if (!Number.isFinite(price) || price <= 0) return null
       if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 999) return null
       return { id, title, price, quantity }
+    })
+    .filter((item): item is CheckoutItem => Boolean(item))
+}
+
+function parsePayPalUnitItems(raw: unknown): CheckoutItem[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((entry) => {
+      const item = entry as any
+      const title = String(item?.name || '').trim().slice(0, 127)
+      const price = Number(item?.unit_amount?.value)
+      const quantity = Number(item?.quantity)
+      if (!title) return null
+      if (!Number.isFinite(price) || price <= 0) return null
+      if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 999) return null
+      return {
+        id: title,
+        title,
+        price,
+        quantity,
+      }
     })
     .filter((item): item is CheckoutItem => Boolean(item))
 }
@@ -70,12 +92,15 @@ async function createPayPalOrder(params: {
   items: CheckoutItem[]
   returnUrl: string
   cancelUrl: string
+  localOrderId: string
 }) {
-  const { accessToken, total, items, returnUrl, cancelUrl } = params
+  const { accessToken, total, items, returnUrl, cancelUrl, localOrderId } = params
   const payload = {
     intent: 'CAPTURE',
     purchase_units: [
       {
+        custom_id: localOrderId,
+        invoice_id: localOrderId,
         amount: {
           currency_code: 'USD',
           value: normalizeAmount(total),
@@ -136,6 +161,112 @@ async function capturePayPalOrder(accessToken: string, orderId: string) {
   return data
 }
 
+async function createLocalOrder(items: CheckoutItem[], total: number) {
+  return db.order.create({
+    data: {
+      totalAmount: total,
+      currency: 'USD',
+      status: 'CREATED',
+      items: {
+        create: items.map((item) => ({
+          productId: item.id,
+          productTitle: item.title,
+          unitPrice: item.price,
+          quantity: item.quantity,
+          lineTotal: item.price * item.quantity,
+        })),
+      },
+    },
+  })
+}
+
+async function finalizeOrderFromCapture(paypalOrderId: string, captured: any) {
+  const unit = captured?.purchase_units?.[0]
+  const capture = unit?.payments?.captures?.[0]
+  const captureId = String(capture?.id || '').trim()
+  const amount = Number(capture?.amount?.value ?? 0)
+  const currency = String(capture?.amount?.currency_code || 'USD')
+  const localOrderId = String(unit?.custom_id || '').trim()
+
+  let order = localOrderId
+    ? await db.order.findUnique({ where: { id: localOrderId } })
+    : await db.order.findUnique({ where: { paypalOrderId } })
+
+  if (!order) {
+    const fallbackItems = parsePayPalUnitItems(unit?.items)
+    const fallbackTotal = Number.isFinite(amount) && amount > 0
+      ? amount
+      : fallbackItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    order = await db.order.create({
+      data: {
+        paypalOrderId,
+        status: 'PAID',
+        currency,
+        totalAmount: fallbackTotal,
+        paidAt: new Date(),
+        items: {
+          create: fallbackItems.map((item) => ({
+            productId: item.id,
+            productTitle: item.title,
+            unitPrice: item.price,
+            quantity: item.quantity,
+            lineTotal: item.price * item.quantity,
+          })),
+        },
+      },
+    })
+  } else {
+    order = await db.order.update({
+      where: { id: order.id },
+      data: {
+        paypalOrderId,
+        status: 'PAID',
+        currency,
+        paidAt: new Date(),
+      },
+    })
+  }
+
+  if (captureId) {
+    await db.paymentTransaction.upsert({
+      where: { providerCaptureId: captureId },
+      update: {
+        orderId: order.id,
+        provider: 'paypal',
+        providerOrderId: paypalOrderId,
+        eventType: 'PAYMENT.CAPTURE.COMPLETED',
+        amount: Number.isFinite(amount) ? amount : null,
+        currency,
+        rawPayload: JSON.stringify(captured),
+      },
+      create: {
+        orderId: order.id,
+        provider: 'paypal',
+        providerOrderId: paypalOrderId,
+        providerCaptureId: captureId,
+        eventType: 'PAYMENT.CAPTURE.COMPLETED',
+        amount: Number.isFinite(amount) ? amount : null,
+        currency,
+        rawPayload: JSON.stringify(captured),
+      },
+    })
+  } else {
+    await db.paymentTransaction.create({
+      data: {
+        orderId: order.id,
+        provider: 'paypal',
+        providerOrderId: paypalOrderId,
+        eventType: 'PAYMENT.CAPTURE.COMPLETED',
+        amount: Number.isFinite(amount) ? amount : null,
+        currency,
+        rawPayload: JSON.stringify(captured),
+      },
+    })
+  }
+
+  return { order, capture }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const clientId = process.env.PAYPAL_CLIENT_ID
@@ -155,30 +286,64 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '订单金额无效' }, { status: 400 })
     }
 
+    const localOrder = await createLocalOrder(items, total)
     const baseUrl = await getBaseUrl()
     const returnUrl = new URL('/cart', baseUrl)
     returnUrl.searchParams.set('paypalStatus', 'success')
     const cancelUrl = new URL('/cart', baseUrl)
     cancelUrl.searchParams.set('paypalStatus', 'cancel')
 
-    const accessToken = await getPayPalAccessToken(clientId, clientSecret)
-    const created = await createPayPalOrder({
-      accessToken,
-      total,
-      items,
-      returnUrl: returnUrl.toString(),
-      cancelUrl: cancelUrl.toString(),
-    })
-    const links = Array.isArray(created?.links) ? created.links : []
-    const approve = links.find((link: any) => link?.rel === 'approve')?.href
-    if (!approve) {
-      return NextResponse.json({ error: '创建支付订单失败' }, { status: 502 })
-    }
+    try {
+      const accessToken = await getPayPalAccessToken(clientId, clientSecret)
+      const created = await createPayPalOrder({
+        accessToken,
+        total,
+        items,
+        returnUrl: returnUrl.toString(),
+        cancelUrl: cancelUrl.toString(),
+        localOrderId: localOrder.id,
+      })
+      const links = Array.isArray(created?.links) ? created.links : []
+      const approve = links.find((link: any) => link?.rel === 'approve')?.href
+      if (!approve) {
+        await db.order.update({
+          where: { id: localOrder.id },
+          data: { status: 'FAILED' },
+        })
+        return NextResponse.json({ error: '创建支付订单失败' }, { status: 502 })
+      }
 
-    return NextResponse.json({
-      orderId: created.id,
-      approveUrl: approve,
-    })
+      await db.order.update({
+        where: { id: localOrder.id },
+        data: {
+          paypalOrderId: String(created.id || ''),
+          status: 'APPROVED',
+        },
+      })
+      await db.paymentTransaction.create({
+        data: {
+          orderId: localOrder.id,
+          provider: 'paypal',
+          providerOrderId: String(created.id || ''),
+          eventType: 'CHECKOUT.ORDER.CREATED',
+          amount: total,
+          currency: 'USD',
+          rawPayload: JSON.stringify(created),
+        },
+      })
+
+      return NextResponse.json({
+        orderId: created.id,
+        localOrderId: localOrder.id,
+        approveUrl: approve,
+      })
+    } catch (error) {
+      await db.order.update({
+        where: { id: localOrder.id },
+        data: { status: 'FAILED' },
+      })
+      throw error
+    }
   } catch (error) {
     console.error('创建 PayPal 订单失败:', error)
     return NextResponse.json({ error: '创建 PayPal 订单失败' }, { status: 500 })
@@ -194,20 +359,30 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const orderId = String(body?.orderId || '').trim()
-    if (!orderId) {
+    const paypalOrderId = String(body?.orderId || '').trim()
+    if (!paypalOrderId) {
       return NextResponse.json({ error: '缺少 PayPal 订单号' }, { status: 400 })
     }
 
+    const existing = await db.order.findUnique({ where: { paypalOrderId } })
+    if (existing?.status === 'PAID') {
+      return NextResponse.json({
+        success: true,
+        orderId: paypalOrderId,
+        status: 'COMPLETED',
+      })
+    }
+
     const accessToken = await getPayPalAccessToken(clientId, clientSecret)
-    const captured = await capturePayPalOrder(accessToken, orderId)
+    const captured = await capturePayPalOrder(accessToken, paypalOrderId)
     if (captured?.status !== 'COMPLETED') {
       return NextResponse.json({ error: '支付未完成', details: captured }, { status: 409 })
     }
 
-    const capture = captured?.purchase_units?.[0]?.payments?.captures?.[0]
+    const { order, capture } = await finalizeOrderFromCapture(paypalOrderId, captured)
     return NextResponse.json({
       success: true,
+      localOrderId: order.id,
       orderId: captured.id,
       captureId: capture?.id || null,
       amount: capture?.amount?.value || null,
