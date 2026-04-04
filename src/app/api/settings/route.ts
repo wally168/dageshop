@@ -91,6 +91,64 @@ const japanesePresetSettings: Record<(typeof localizedPresetKeys)[number], strin
   seoDescription: '優れた品質と洗練されたデザインの商品を見つけてください',
 }
 
+const localizedPresetByLanguage: Record<'en' | 'ja', Record<(typeof localizedPresetKeys)[number], string>> = {
+  en: {
+    siteDescription: defaultSettings.siteDescription,
+    siteKeywords: defaultSettings.siteKeywords,
+    contactAddress: defaultSettings.contactAddress,
+    footerText: defaultSettings.footerText,
+    aboutText: defaultSettings.aboutText,
+    ourStory: defaultSettings.ourStory,
+    ourMission: defaultSettings.ourMission,
+    whyChooseUs: defaultSettings.whyChooseUs,
+    privacyPolicy: defaultSettings.privacyPolicy,
+    termsOfService: defaultSettings.termsOfService,
+    seoKeywords: defaultSettings.seoKeywords,
+    seoDescription: defaultSettings.seoDescription,
+  },
+  ja: japanesePresetSettings,
+}
+
+const homeContentPresetKeys = [
+  'featuredTitle',
+  'featuredSubtitle',
+  'whyChooseTitle',
+  'whyChooseSubtitle',
+  'feature1Title',
+  'feature1Description',
+  'feature2Title',
+  'feature2Description',
+  'feature3Title',
+  'feature3Description',
+] as const
+
+const homeContentPresetsByLanguage: Record<'en' | 'ja', Record<(typeof homeContentPresetKeys)[number], string>> = {
+  en: {
+    featuredTitle: 'Featured Products',
+    featuredSubtitle: 'Discover our carefully curated collection of premium products, each selected for exceptional quality and design.',
+    whyChooseTitle: 'Why Choose Your Brand',
+    whyChooseSubtitle: "We're redefining the shopping experience with uncompromising quality, innovative design, and customer-first approach.",
+    feature1Title: 'Premium Quality',
+    feature1Description: 'Every product undergoes rigorous quality testing to ensure it meets our exceptional standards.',
+    feature2Title: 'Secure & Trusted',
+    feature2Description: 'Advanced security measures protect your data with enterprise-grade encryption and privacy.',
+    feature3Title: 'Lightning Fast',
+    feature3Description: 'Optimized delivery network ensures your orders arrive quickly and in perfect condition.',
+  },
+  ja: {
+    featuredTitle: '注目商品',
+    featuredSubtitle: '品質・デザイン・価値に優れた商品を厳選してご紹介します。',
+    whyChooseTitle: '当店が選ばれる理由',
+    whyChooseSubtitle: '品質へのこだわり、使いやすさ、安心のサポートで、より良いショッピング体験をお届けします。',
+    feature1Title: '高品質',
+    feature1Description: 'すべての商品は厳格な品質基準に基づいて選定されています。',
+    feature2Title: '安心・信頼',
+    feature2Description: '安全対策を徹底し、お客様の情報を適切に保護します。',
+    feature3Title: 'スピーディー',
+    feature3Description: '最適化された配送と運用で、スムーズなお買い物を実現します。',
+  },
+}
+
 // GET - 获取所有设置
 export async function GET() {
   try {
@@ -135,13 +193,17 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const lang = body.frontendLanguage === 'ja' ? 'ja' : 'en'
-    if (lang === 'ja') {
+    const targetLang: 'en' | 'ja' = body.frontendLanguage === 'ja' ? 'ja' : 'en'
+    const previousLangSetting = await db.siteSettings.findUnique({ where: { key: 'frontendLanguage' } })
+    const previousLang: 'en' | 'ja' = previousLangSetting?.value === 'ja' ? 'ja' : 'en'
+
+    if (previousLang !== targetLang) {
+      const sourcePreset = localizedPresetByLanguage[previousLang]
+      const targetPreset = localizedPresetByLanguage[targetLang]
       for (const key of localizedPresetKeys) {
         const value = typeof body[key] === 'string' ? body[key] : ''
-        const defaultValue = defaultSettings[key]
-        if (!value || value === defaultValue) {
-          body[key] = japanesePresetSettings[key]
+        if (!value || value === sourcePreset[key]) {
+          body[key] = targetPreset[key]
         }
       }
     }
@@ -159,6 +221,35 @@ export async function PUT(request: NextRequest) {
       )
     }
     await db.$transaction(ops)
+
+    if (previousLang !== targetLang) {
+      const sourceHomePreset = homeContentPresetsByLanguage[previousLang]
+      const targetHomePreset = homeContentPresetsByLanguage[targetLang]
+      const homeContent = await db.homeContent.findFirst()
+      if (!homeContent) {
+        await db.homeContent.create({
+          data: {
+            ...targetHomePreset,
+            carouselEnabled: true,
+            carouselInterval: 5000,
+          },
+        })
+      } else {
+        const homeContentUpdateData: Partial<Record<(typeof homeContentPresetKeys)[number], string>> = {}
+        for (const key of homeContentPresetKeys) {
+          const currentValue = homeContent[key]
+          if (!currentValue || currentValue === sourceHomePreset[key]) {
+            homeContentUpdateData[key] = targetHomePreset[key]
+          }
+        }
+        if (Object.keys(homeContentUpdateData).length > 0) {
+          await db.homeContent.update({
+            where: { id: homeContent.id },
+            data: homeContentUpdateData,
+          })
+        }
+      }
+    }
 
     return NextResponse.json({ message: '设置更新成功' }, {
       headers: {
