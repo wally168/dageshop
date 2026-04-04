@@ -7,12 +7,10 @@ import Link from 'next/link'
 import { formatPrice } from '@/lib/utils'
 import { useSettings } from '@/lib/settings'
 import { normalizeFrontendLanguage, t, translateAttributeName } from '@/lib/i18n'
-import { useSearchParams } from 'next/navigation'
 
 export default function CartPage() {
   const { settings } = useSettings()
   const lang = normalizeFrontendLanguage(settings.frontendLanguage)
-  const searchParams = useSearchParams()
   const [items, setItems] = useState<CartItem[]>([])
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false)
   const [statusText, setStatusText] = useState('')
@@ -23,8 +21,10 @@ export default function CartPage() {
   }, [])
 
   useEffect(() => {
-    const status = searchParams.get('paypalStatus')
-    const token = searchParams.get('token')
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const status = params.get('paypalStatus')
+    const token = params.get('token')
     if (status === 'cancel') {
       setStatusText(t(lang, 'cart.paypalCanceled'))
       if (typeof window !== 'undefined') {
@@ -54,7 +54,7 @@ export default function CartPage() {
         }
       }
     })()
-  }, [lang, searchParams])
+  }, [lang])
 
   const handleRemove = (id: string, selectedOptions?: Record<string, string>) => {
     const next = removeItem(id, selectedOptions)
