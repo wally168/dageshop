@@ -1,0 +1,201 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+  engineType = "binary"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // 使用 Prisma Accelerate 连接（高并发与全局边缘优化）
+  url       = env("PRISMA_DATABASE_URL")
+  // 迁移与维护时使用直连数据库，避免代理/连接池（兼容 Vercel Prisma Postgres 默认变量名）
+  directUrl = env("POSTGRES_URL")
+}
+
+// datasource db {
+//   provider  = "sqlite"
+//   url       = "file:./dev.db"
+// }
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  image       String?
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Brand {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  image       String?
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  title           String   // 标题限制200字符
+  slug            String   @unique
+  asin            String?  @unique
+  showAsinOnFrontend Boolean @default(false)
+  mainImage       String
+  images          String   // JSON string of image URLs
+  youtubeUrl      String?
+  youtubeIndex    Int?
+  price           Float
+  originalPrice   Float?
+  amazonUrl       String
+  category        Category @relation(fields: [categoryId], references: [id])
+  categoryId      String
+  brandRelation   Brand?   @relation(fields: [brandId], references: [id])
+  brandId         String?
+  bulletPoints    String   // JSON string of 5 bullet points, 每点限制500字符
+  description     String   // 统一的产品描述，支持HTML，限制3000字符
+  featured        Boolean  @default(false)
+  active          Boolean  @default(true)
+  brand           String?
+  upc             String?
+  publishedAt     DateTime?
+  variants        String?   // JSON string of variant groups: [{name, options[]}]
+  variantImageMap String?   // JSON: { [groupName]: { [option]: imageIndex } }
+  variantOptionImages String? // JSON: { [groupName]: { [option]: imageUrl } }
+  variantOptionLinks String? // JSON: { [groupName]: { [option]: url } }
+  variantOptionPrices String? // JSON: { [groupName]: { [option]: price } }, 组合使用 __combo__ key
+  variantOptionOriginalPrices String? // JSON: { [groupName]: { [option]: originalPrice } }, 组合使用 __combo__ key
+  variantOptionTitles String? // JSON: { [groupName]: { [option]: title } }, 组合使用 __combo__ key
+  
+  // 新增：按钮显示控制
+  showBuyOnAmazon   Boolean  @default(true)
+  showAddToCart     Boolean  @default(true)
+  sortOrder         Int      @default(0)
+
+  reviews        ProductReview[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ProductReview {
+  id        String   @id @default(cuid())
+  product   Product  @relation(fields: [productId], references: [id])
+  productId String
+  isVisible Boolean  @default(true)
+  country   String?
+  name      String?
+  title     String?
+  content   String
+  rating    Int      @default(5)
+  images    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String?
+  country   String?
+  orderNo   String?
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model SiteSettings {
+  id          String @id @default(cuid())
+  key         String @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model Navigation {
+  id       String @id @default(cuid())
+  label    String
+  href     String
+  order    Int
+  active   Boolean @default(true)
+  parentId String?
+  parent   Navigation? @relation("NavigationHierarchy", fields: [parentId], references: [id])
+  children Navigation[] @relation("NavigationHierarchy")
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  passwordSalt String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  sessions     Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  user      AdminUser @relation(fields: [userId], references: [id])
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model HomeContent {
+  id                    String   @id @default(cuid())
+  // Featured Products Section
+  featuredTitle         String   @default("Featured Products")
+  featuredSubtitle      String   @default("Discover our carefully curated collection of premium products, each selected for exceptional quality and design.")
+  
+  // Why Choose Section
+  whyChooseTitle        String   @default("Why Choose Your Brand")
+  whyChooseSubtitle     String   @default("We're redefining the shopping experience with uncompromising quality, innovative design, and customer-first approach.")
+  
+  // Feature Cards
+  feature1Title         String   @default("Premium Quality")
+  feature1Description   String   @default("Every product undergoes rigorous quality testing to ensure it meets our exceptional standards.")
+  
+  feature2Title         String   @default("Secure & Trusted")
+  feature2Description   String   @default("Advanced security measures protect your data with enterprise-grade encryption and privacy.")
+  
+  feature3Title         String   @default("Lightning Fast")
+  feature3Description   String   @default("Optimized delivery network ensures your orders arrive quickly and in perfect condition.")
+  
+  carouselEnabled       Boolean  @default(true)
+  carouselInterval      Int      @default(5000)
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model CarouselItem {
+  id          String   @id @default(cuid())
+  title       String?
+  description String?
+  imageUrl    String
+  link        String?
+  btnText     String?  @default("Learn More")
+  newTab      Boolean  @default(false)
+  order       Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Image {
+  id          String   @id @default(cuid())
+  filename    String
+  contentType String
+  size        Int
+  data        Bytes
+  createdAt   DateTime @default(now())
+}
